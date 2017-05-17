@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>demo</title>
+	<style type="text/css">
+		body{
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+			display: flex;
+			justify-content:center;
+		}
+		canvas{
+			z-index: 10;
+		}
+		.btn_line{
+			position: absolute;
+			bottom: 0px;
+			left: 0px;
+			/*background-color: black;*/
+		}
+		.large_ico{
+			background: rgba(34,34,34,0.65) !important;
+			cursor: pointer;
+		}
+		.large_ico >li >a >span{
+			font-size: 20px;
+			color:white;
+		}
+		#hint_div{
+			border-radius: 50%;
+			z-index: 100;
+			display: none;
+			position: absolute;
+ 			align-self: center;
+			background:rgba(34,34,34,0.65);
+			padding:35px;
+		}
+		#hint_div >h4{
+			color:white;
+		}
+		#hint_div >h4 >span{
+			font-size: 20px;
+		}
+	</style>
+	<link rel=stylesheet href="static/css/bootstrap.min.css">
+	<link href="static/css/bootstrap-theme.min.css" rel="stylesheet"/>
+	<script type="text/javascript" src="static/js/bootstrap.min.js"></script>
+	<script type="text/javascript" src="static/js/jquery-3.1.1.min.js"></script>
+	
+	<script type="text/javascript" src="static/js/three.js"></script>
+	<script type="text/javascript" src="static/js/stats.min.js"></script>
+	<script type="text/javascript" src="static/js/MTLLoader.js"></script>
+	<script type="text/javascript" src="static/js/OBJLoader.js"></script>
+	<script type="text/javascript">
+		var camera,
+			scene,
+			renderer,
+			clock;
+		var container = null;
+		var inmotion = false;
+		var inmotionX = false;
+		var inmotionY = false;
+		var startX,
+			startY;
+		var stat;
+		var cube, 
+			testcube,
+			mapPlane,
+			fishPlane;
+		var origin = new THREE.Vector3(0,0,0);
+		var snakeHeadPosition;
+		var rotationSpeed = 0.1;
+		var rotation_rad =  0.0;
+		var foodMap = [];
+		var FOOD_MAX_SIZE = 15;
+		var FOOD_RADIUS = 0.1;
+		var SNAKE_LENGTH = 2.5;
+
+		var score = 0;
+
+		var border = [];
+
+		// mesh响应鼠标
+		var INTERSECTED;
+		var raycaster;
+		var mouse;
+
+		var keyboard_situation = {
+			moveForward:{
+				enable:true,
+				in:false
+			},
+			moveLeft:{
+				enable:true,
+				in:false
+			},
+			moveRight:{
+				enable:true,
+				in:false
+			},
+			moveBackward:{
+				enable:true,
+				in:false
+			}
+		};
+
+		var moveSpeed = 0.005;
+
+		function init() {
+			getFullScreen();
+
+			container = document.createElement("div");
+			// container.id = "canvas_wrapper";
+			document.body.appendChild(container);
+
+			renderer = new THREE.WebGLRenderer({
+				antialias:true
+			});
+			renderer.setSize( window.innerWidth,window.innerHeight);
+			container.appendChild(renderer.domElement);
+
+			document.body.addEventListener("keydown",onKeyDown,false);
+			document.body.addEventListener("keyup",onKeyUp,false);
+
+			window.addEventListener("deviceorientation",onDeviceOrientation,false);
+			
+			renderer.domElement.addEventListener("click",onCanvasClick,false);
+			window.addEventListener("resize",onWindowResize,false);
+
+			document.getElementById("bottom_helper").addEventListener("click",onHelperClick,false);
+
+			camera = new THREE.PerspectiveCamera(45,window.innerWidth/window.innerHeight,0.1,100);
+			camera.position.set(0,5,0);
+			camera.lookAt(origin);
+
+			clock = new THREE.Clock();
+
+			raycaster = new THREE.Raycaster();
+			mouse = new THREE.Vector2();
+
+			scene = new THREE.Scene();
+
+			var mapGeometry = new THREE.PlaneGeometry(20,14,1,1);
+
+			mapPlane = new THREE.Mesh(mapGeometry,new THREE.MeshBasicMaterial({
+				map:THREE.ImageUtils.loadTexture("static/img/lan.jpg"),
+				//side:THREE.DoubleSide
+			}));
+
+			mapPlane.rotation.x = -Math.PI/2;
+
+			fishPlane = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,SNAKE_LENGTH,20,20,false),new THREE.MeshBasicMaterial({
+				map:THREE.ImageUtils.loadTexture("static/img/tmx.gif"),
+				side:THREE.DoubleSide
+			}));
+			fishPlane.rotation.x = -Math.PI/2;
+			fishPlane.rotation.y = -Math.PI;
+			fishPlane.position.x = 0;
+			
+			snakeHeadPosition = new THREE.Vector3(0,0.1,-SNAKE_LENGTH/2);
+			
+			camera.position.z = snakeHeadPosition.z;
+
+			fishPlane.position.y = 0.1;
+			scene.add(mapPlane);
+			scene.add(fishPlane);
+
+			// buildBorder(cube);
+			for(var i=foodMap.length;i<FOOD_MAX_SIZE;i++){
+				var foodMesh = new THREE.Mesh(new THREE.SphereGeometry(0.1,10,10),new THREE.MeshBasicMaterial({
+					color: 0xffff00,
+				}));
+				foodMesh.position.z = Math.random()*10-Math.random()*10;
+				foodMesh.position.x = Math.random()*10-Math.random()*10;
+				foodMap[i] = foodMesh;
+				scene.add(foodMesh);
+			}
+
+			draw();
+		}
+
+		function draw() {
+			rotation_rad = fishPlane.rotation.z - 0;
+
+			var cos_value = Math.cos(rotation_rad);
+			var sin_value = Math.sin(rotation_rad);
+
+			fishPlane.position.z -= cos_value * moveSpeed;
+			fishPlane.position.x += sin_value * moveSpeed;
+
+			snakeHeadPosition.z = fishPlane.position.z - SNAKE_LENGTH/2*cos_value;
+			snakeHeadPosition.x = fishPlane.position.x + SNAKE_LENGTH/2*sin_value;
+			
+			camera.rotation.z = -fishPlane.rotation.z;
+
+			camera.position.z = snakeHeadPosition.z;
+			camera.position.x = snakeHeadPosition.x;
+
+			for(var i=0;i<foodMap.length;i++){
+				if(foodMap[i].position.x - FOOD_RADIUS <= snakeHeadPosition.x &&
+					snakeHeadPosition.x <= foodMap[i].position.x + FOOD_RADIUS && foodMap[i].position.z - FOOD_RADIUS <= snakeHeadPosition.z && snakeHeadPosition.z <= foodMap[i].position.z + FOOD_RADIUS){
+					score++;
+					document.getElementById("score_div").innerHTML = "SCORE:"+score
+					scene.remove(foodMap[i]);
+					foodMap[i] = null;
+					var foodMesh = new THREE.Mesh(new THREE.SphereGeometry(0.1,10,10),new THREE.MeshBasicMaterial({
+					color: 0xffff00,
+				}));
+					foodMesh.position.x = Math.random()*10-Math.random()*10;
+					foodMesh.position.z = Math.random()*10-Math.random()*10;
+					foodMap[i] = foodMesh;
+					scene.add(foodMesh);
+				}
+			}			
+
+			renderer.render(scene,camera);
+			requestAnimationFrame(function() {
+
+				draw();
+			})
+		}
+
+		function onHelperClick(event) {
+			// event.preventDefault();
+			target = event.target;
+			var check = "";
+			if(target.tagName.toLowerCase()==="a"){
+				//tagName始终返回大写，不计算文本节点
+				check = target.id;
+			}
+			else{
+				if(target.parentNode){
+					check = target.parentNode.id;
+				}
+			}
+			switch(check){
+				case "show_hint": 
+					showHint();
+					break;
+				case "volume":
+					audioControl();
+					break;
+				case "full_screen":
+					myFullScreen();
+					break;
+				case "operation_mode":
+					break;
+			}
+		}
+		
+		function showHint() {
+			var hint = document.getElementById("hint_div");
+			if(hint.style.display === "none"){
+				displayHint(hint);
+			}
+			else{
+				cancelHint(hint);
+			}
+		}
+
+		function onCanvasClick(event) {
+			event.preventDefault();
+			var hint = document.getElementById("hint_div");
+			if(INTERSECTED){
+				displayHint(hint);
+			}else{
+				cancelHint(hint);
+			}
+		}
+
+		function onWindowResize(event) {
+			camera.aspect = window.innerWidth/window.innerHeight;
+			camera.updateProjectionMatrix();
+			// 更新投影矩阵，当相机的参数被更改后,必须调用此方法
+			renderer.setSize( window.innerWidth, window.innerHeight );
+		}
+
+		function displayHint(domElement) {
+			domElement.style.display = "block";
+		}
+
+		function cancelHint(domElement) {
+			domElement.style.display = "none";
+		}
+
+		function getFullScreen() {
+			var de = document.body;
+			de.requestFullScreen = de.requestFullScreen
+			||de.webkitRequestFullScreen
+			||de.mozRequestFullScreen;
+		}
+
+		function myFullScreen() {
+			var de = document.body;
+ 			de.requestFullScreen();
+		}
+
+		function audioControl() {
+			var audio_player = document.getElementById("audio_player");
+			if(audio_player.paused){
+				audio_player.play();
+			}
+			else{
+				audio_player.pause();
+			}
+		}
+
+		function buildBorder(room) {
+			var temp = room.geometry.vertices;
+
+			//基于顶点边界构建数组
+			for(var i=0,len = temp.length;i<len;i++){
+				border.push({
+					x:temp[i].x*0.8,
+					z:temp[i].z*0.8});
+			}
+		}
+
+		function checkBorder(obj) {
+			// 若为向量
+			return true;
+
+
+			if(obj.x){
+				var p = {
+					x:obj.x,
+					z:obj.z
+				};	
+			}
+			else{
+				var p = {
+					x:obj.position.x,
+					z:obj.position.z
+				};	
+			}
+
+			var flag = false;
+			// 若相交次数为奇数,flag === true
+
+			for(var i=0,len=border.length,j=len-1;i<len;j=i,i++){
+				var x1 = border[i].x,
+					z1 = border[i].z,
+					x2 = border[j].x,
+					z2 = border[j].z;
+
+				//表示点与顶点重合
+				if((x1 === p.x && z1 === p.z) || 
+					(x2 === p.x && z2 === p.z)) {
+        			return "on";
+      			}
+
+      			// 判断线段两端点是否在射线两侧(即射线是否穿过线段)
+      			// 等号的情况是规定点若在射线上，则属于射线以上的一侧
+      			// 射线沿x轴正方向
+      			if((z1 < p.z && z2 >= p.z) 
+      				|| (z1 >= p.z && z2 < p.z)){
+      				// 求y=a与线段相交点的横坐标
+      				// (x-x1)/(x2-x1)=(y-y1)/(y2-y1)
+      				var x = x1 + (p.z - z1) * (x2 - x1) / (z2 - z1)
+
+      				// 点在多边形的边上
+        			if(x-0.2 <= p.x && p.x <= x + 0.2) {
+          				return "on";
+        			}
+
+        			// 穿过边界
+        			if(x > p.x){
+        				flag = !flag;
+        			}
+      			}
+			}
+			return flag ? "in" : "out";
+		}
+
+		// keyboard control
+		function onKeyDown(event) {
+			switch ( event.keyCode ) {
+				case 37: /*left*/
+				case 65: /*A*/ 
+
+					fishPlane.rotation.z-=0.01;
+					break;
+
+				case 39: /*right*/
+				case 68: /*D*/ 
+					fishPlane.rotation.z+=0.01;
+					break;
+			}
+		}
+
+		function onKeyUp(event) {
+			switch ( event.keyCode ) {
+				// case 38: /*up*/
+				// case 87: /*W*/ keyboard_situation.moveForward.in = false; break;
+
+				case 37: /*left*/
+				case 65: /*A*/ keyboard_situation.moveLeft.in = false; break;
+
+				// case 40: /*down*/
+				// case 83: /*S*/ keyboard_situation.moveBackward.in = false; break;
+
+				case 39: /*right*/
+				case 68: /*D*/ keyboard_situation.moveRight.in = false; break;
+			}
+		}
+
+		function onDeviceOrientation(event) {
+			if(event.beta > 4.0){
+				fishPlane.rotation.z+=0.005;
+			}else{
+				if(event.beta < -4.0){
+					fishPlane.rotation.z-=0.005;
+				}
+			}
+		}
+	</script>
+</head>
+<body onload="init()">
+	<div style="position: fixed;left: 0;top: 0;background:rgba(34,34,34,0.65);color: white" id="score_div">
+		SCORE:0
+	</div>
+
+	<div class="btn_line" id="bottom_helper">
+		<ul class="nav navbar-nav navbar-inverse large_ico">
+			<li>
+				<a id="show_hint"><span class="glyphicon glyphicon-question-sign" ></span></a>
+			</li>
+			<li>
+				<a id="operation_mode"><span class="glyphicon glyphicon-move"></span></a>
+			</li>
+			<li>
+				<a id="volume"><span class="glyphicon glyphicon-volume-up"></span></a>
+			</li>
+			<li>
+				<a><span class="glyphicon glyphicon-th-large"></span></a>
+			</li>
+			<li>
+				<a id="full_screen"><span class="glyphicon glyphicon-fullscreen"></span></a>
+			</li>
+			<li>
+				<a><span class="glyphicon glyphicon-floppy-open"></span></a>
+			</li>
+		</ul>
+	</div>
+
+	<div id="hint_div">
+		<h4><span class="glyphicon glyphicon-question-sign"></span>&nbsp&nbsphelp</h4>
+		<h4><span class="glyphicon glyphicon-move"></span>&nbsp&nbspoperation mode</h4>
+		<h4><span class="glyphicon glyphicon-volume-up"></span>&nbsp&nbspsound</h4>
+		<h4><span class="glyphicon glyphicon-fullscreen"></span>&nbsp&nbspfull screen</h4>
+	</div>
+</body>
+</html>
