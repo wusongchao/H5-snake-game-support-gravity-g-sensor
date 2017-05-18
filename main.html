@@ -27,6 +27,13 @@
 			font-size: 20px;
 			color:white;
 		}
+		#score_div{
+			position: fixed;
+			left: 0;
+			top: 0;
+			background:rgba(34,34,34,0.65);
+			color: white
+		}
 		#hint_div{
 			border-radius: 50%;
 			z-index: 100;
@@ -61,21 +68,25 @@
 		var inmotion = false;
 		var inmotionX = false;
 		var inmotionY = false;
-		var startX,
-			startY;
 		var stat;
-		var cube, 
-			testcube,
-			mapPlane,
+		var mapPlane,
 			fishPlane;
-		var origin = new THREE.Vector3(0,0,0);
+		var origin;
 		var snakeHeadPosition;
+
+		var CONST_PARAMETER = {
+		    rotationSpeed:0.1,
+			FOOD_MAX_SIZE:15,
+			FOOD_RADIUS:0.1,
+			SNAKE_LENGTH:2.5,
+			MAP_WIDTH:20,
+			MAP_HEIGHT:14,
+			MOVE_SPEED:0.005
+		}
+
 		var rotationSpeed = 0.1;
 		var rotation_rad =  0.0;
 		var foodMap = [];
-		var FOOD_MAX_SIZE = 15;
-		var FOOD_RADIUS = 0.1;
-		var SNAKE_LENGTH = 2.5;
 
 		var score = 0;
 
@@ -85,6 +96,8 @@
 		var INTERSECTED;
 		var raycaster;
 		var mouse;
+
+		var animationFrameID = null;
 
 		var keyboard_situation = {
 			moveForward:{
@@ -105,7 +118,6 @@
 			}
 		};
 
-		var moveSpeed = 0.005;
 
 		function init() {
 			getFullScreen();
@@ -130,6 +142,8 @@
 
 			document.getElementById("bottom_helper").addEventListener("click",onHelperClick,false);
 
+			origin = new THREE.Vector3(0,0,0);
+
 			camera = new THREE.PerspectiveCamera(45,window.innerWidth/window.innerHeight,0.1,100);
 			camera.position.set(0,5,0);
 			camera.lookAt(origin);
@@ -141,7 +155,7 @@
 
 			scene = new THREE.Scene();
 
-			var mapGeometry = new THREE.PlaneGeometry(20,14,1,1);
+			var mapGeometry = new THREE.PlaneGeometry(CONST_PARAMETER.MAP_WIDTH,CONST_PARAMETER.MAP_HEIGHT,1,1);
 
 			mapPlane = new THREE.Mesh(mapGeometry,new THREE.MeshBasicMaterial({
 				map:THREE.ImageUtils.loadTexture("static/img/lan.jpg"),
@@ -150,7 +164,7 @@
 
 			mapPlane.rotation.x = -Math.PI/2;
 
-			fishPlane = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,SNAKE_LENGTH,20,20,false),new THREE.MeshBasicMaterial({
+			fishPlane = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,CONST_PARAMETER.SNAKE_LENGTH,20,20,false),new THREE.MeshBasicMaterial({
 				map:THREE.ImageUtils.loadTexture("static/img/tmx.gif"),
 				side:THREE.DoubleSide
 			}));
@@ -158,7 +172,7 @@
 			fishPlane.rotation.y = -Math.PI;
 			fishPlane.position.x = 0;
 			
-			snakeHeadPosition = new THREE.Vector3(0,0.1,-SNAKE_LENGTH/2);
+			snakeHeadPosition = new THREE.Vector3(0,0.1,-CONST_PARAMETER.SNAKE_LENGTH/2);
 			
 			camera.position.z = snakeHeadPosition.z;
 
@@ -167,7 +181,7 @@
 			scene.add(fishPlane);
 
 			// buildBorder(cube);
-			for(var i=foodMap.length;i<FOOD_MAX_SIZE;i++){
+			for(var i=foodMap.length;i<CONST_PARAMETER.FOOD_MAX_SIZE;i++){
 				var foodMesh = new THREE.Mesh(new THREE.SphereGeometry(0.1,10,10),new THREE.MeshBasicMaterial({
 					color: 0xffff00,
 				}));
@@ -186,11 +200,11 @@
 			var cos_value = Math.cos(rotation_rad);
 			var sin_value = Math.sin(rotation_rad);
 
-			fishPlane.position.z -= cos_value * moveSpeed;
-			fishPlane.position.x += sin_value * moveSpeed;
+			fishPlane.position.z -= cos_value * CONST_PARAMETER.MOVESPEED;
+			fishPlane.position.x += sin_value * CONST_PARAMETER.MOVESPEED;
 
-			snakeHeadPosition.z = fishPlane.position.z - SNAKE_LENGTH/2*cos_value;
-			snakeHeadPosition.x = fishPlane.position.x + SNAKE_LENGTH/2*sin_value;
+			snakeHeadPosition.z = fishPlane.position.z - CONST_PARAMETER.SNAKE_LENGTH/2*cos_value;
+			snakeHeadPosition.x = fishPlane.position.x + CONST_PARAMETER.SNAKE_LENGTH/2*sin_value;
 			
 			camera.rotation.z = -fishPlane.rotation.z;
 
@@ -198,8 +212,11 @@
 			camera.position.x = snakeHeadPosition.x;
 
 			for(var i=0;i<foodMap.length;i++){
-				if(foodMap[i].position.x - FOOD_RADIUS <= snakeHeadPosition.x &&
-					snakeHeadPosition.x <= foodMap[i].position.x + FOOD_RADIUS && foodMap[i].position.z - FOOD_RADIUS <= snakeHeadPosition.z && snakeHeadPosition.z <= foodMap[i].position.z + FOOD_RADIUS){
+				if(foodMap[i].position.x - CONST_PARAMETER.FOOD_RADIUS <= snakeHeadPosition.x &&
+					snakeHeadPosition.x <= foodMap[i].position.x + CONST_PARAMETER.FOOD_RADIUS &&
+					foodMap[i].position.z - CONST_PARAMETER.FOOD_RADIUS <= snakeHeadPosition.z &&
+					snakeHeadPosition.z <= foodMap[i].position.z + CONST_PARAMETER.FOOD_RADIUS){
+
 					score++;
 					document.getElementById("score_div").innerHTML = "SCORE:"+score
 					scene.remove(foodMap[i]);
@@ -215,8 +232,7 @@
 			}			
 
 			renderer.render(scene,camera);
-			requestAnimationFrame(function() {
-
+			animationFrameID = requestAnimationFrame(function() {
 				draw();
 			})
 		}
@@ -317,16 +333,37 @@
 			}
 		}
 
-		function checkBorder(obj) {
-			// 若为向量
-			return true;
-
-
+		function inBorderSimple(obj) {
 			if(obj.x){
 				var p = {
 					x:obj.x,
 					z:obj.z
-				};	
+				};
+			}
+			else{
+				var p = {
+					x:obj.position.x,
+					z:obj.position.z
+				};
+			}
+
+			if(p.x >= CONST_PARAMETER.MAP_WIDTH/2 ||
+				p.x <= -CONST_PARAMETER.MAP_WIDTH/2 ||
+				p.z >= CONST_PARAMETER.MAP_HEIGHT/2 ||
+				p.z <= -CONST_PARAMETER.MAP_HEIGHT/2){
+				return false;
+			}
+
+			return true;
+        }
+
+		function checkBorder(obj) {
+			// 若为向量
+			if(obj.x){
+				var p = {
+					x:obj.x,
+					z:obj.z
+				};
 			}
 			else{
 				var p = {
@@ -406,18 +443,43 @@
 		}
 
 		function onDeviceOrientation(event) {
-			if(event.beta > 4.0){
-				fishPlane.rotation.z+=0.005;
-			}else{
-				if(event.beta < -4.0){
-					fishPlane.rotation.z-=0.005;
-				}
+		    // portrait
+//		    if(window.orientation == 180 || window.orientation == 0){
+//		        // right
+//		        if(event.gamma > 4.0){
+//					fishPlane.rotation.z+=0.005;
+//				}else{
+//		            // left
+//		            if(event.gamma < -4.0){
+//		                fishPlane.rotation.z-=0.005;
+//					}
+//				}
+//			}else{
+			if(!inBorderSimple(snakeHeadPosition)){
+				cancelAnimationFrame(animationFrameID);
+				var endHintText = new THREE.Mesh(new THREE.TextGeometry("LOSE",{}),
+												new THREE.MeshBasicMaterial({
+													color:0xff0000
+												}))
 			}
+		        // landscape
+				if(event.beta > 4.0){
+					// right
+					fishPlane.rotation.z+=0.005;
+				}else{
+					if(event.beta < -4.0){
+						// left
+						fishPlane.rotation.z-=0.005;
+					}
+				}
+//			}
+
+
 		}
 	</script>
 </head>
 <body onload="init()">
-	<div style="position: fixed;left: 0;top: 0;background:rgba(34,34,34,0.65);color: white" id="score_div">
+	<div id="score_div">
 		SCORE:0
 	</div>
 
