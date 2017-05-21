@@ -200,8 +200,8 @@
 			var cos_value = Math.cos(rotation_rad);
 			var sin_value = Math.sin(rotation_rad);
 
-			fishPlane.position.z -= cos_value * CONST_PARAMETER.MOVESPEED;
-			fishPlane.position.x += sin_value * CONST_PARAMETER.MOVESPEED;
+			fishPlane.position.z -= cos_value * CONST_PARAMETER.MOVE_SPEED;
+			fishPlane.position.x += sin_value * CONST_PARAMETER.MOVE_SPEED;
 
 			snakeHeadPosition.z = fishPlane.position.z - CONST_PARAMETER.SNAKE_LENGTH/2*cos_value;
 			snakeHeadPosition.x = fishPlane.position.x + CONST_PARAMETER.SNAKE_LENGTH/2*sin_value;
